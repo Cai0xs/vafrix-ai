@@ -1,6 +1,29 @@
 // backend/src/controllers/chatController.js
 const { getDb } = require('../database/db');
-const { generateVafrixResponse } = require('../services/aiService');
+const { generateVafrixStreamResponse } = require('../services/aiService');
+const pdfParse = require('pdf-parse');
+const mammoth = require('mammoth');
+
+async function extractTextFromBuffer(file) {
+  if (!file || !file.buffer) return '';
+  const mime = file.mimetype;
+  try {
+    if (mime === 'application/pdf') {
+      const data = await pdfParse(file.buffer);
+      return data.text || '';
+    }
+    if (mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+      const res = await mammoth.extractRawText({ buffer: file.buffer });
+      return res.value || '';
+    }
+    if (mime.startsWith('text/') || mime === 'application/json' || mime === 'text/csv') {
+      return file.buffer.toString('utf-8');
+    }
+  } catch (err) {
+    console.error('Erro ao extrair texto do anexo:', err);
+  }
+  return '';
+}
 
 async function listConversations(req, res) {
   try {
@@ -10,27 +33,30 @@ async function listConversations(req, res) {
     );
     res.json({ conversations: rows });
   } catch (err) {
-    console.error('Erro ao listar conversas:', err);
-    res.status(500).json({ error: 'Erro interno ao buscar histórico de conversas.' });
+    res.status(500).json({ error: 'Erro ao buscar conversas.' });
   }
 }
 
-async function createConversation(req, res) {
+async function deleteConversation(req, res) {
   try {
-    const { title = 'Nova conversa', mode = 'chat' } = req.body || {};
+    const { id } = req.params;
     const db = await getDb();
-    const result = await db.run(
-      'INSERT INTO conversations (title, mode) VALUES (?, ?)',
-      [String(title).slice(0, 120), mode]
-    );
-    const conversation = await db.get(
-      'SELECT id, title, mode, created_at, updated_at FROM conversations WHERE id = ?',
-      [result.lastID]
-    );
-    res.status(201).json({ conversation });
+    await db.run('DELETE FROM messages WHERE conversation_id = ?', [id]);
+    await db.run('DELETE FROM conversations WHERE id = ?', [id]);
+    res.json({ success: true });
   } catch (err) {
-    console.error('Erro ao criar conversa:', err);
-    res.status(500).json({ error: 'Erro interno ao criar conversa.' });
+    res.status(500).json({ error: 'Erro ao excluir conversa.' });
+  }
+}
+
+async function clearAllConversations(req, res) {
+  try {
+    const db = await getDb();
+    await db.run('DELETE FROM messages');
+    await db.run('DELETE FROM conversations');
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao limpar histórico.' });
   }
 }
 
@@ -44,8 +70,7 @@ async function getMessages(req, res) {
     );
     res.json({ messages });
   } catch (err) {
-    console.error('Erro ao buscar mensagens:', err);
-    res.status(500).json({ error: 'Erro interno ao carregar mensagens.' });
+    res.status(500).json({ error: 'Erro ao carregar mensagens.' });
   }
 }
 
@@ -53,171 +78,102 @@ async function sendMessage(req, res) {
   let conversationId = req.body?.conversationId;
 
   try {
-    let { message, mode = 'chat', fileText = '', attachmentName = null } = req.body || {};
+    let { message = '', mode = 'chat', enableSearch = 'false' } = req.body || {};
+    const searchActive = String(enableSearch) === 'true';
 
-    if ((!message || !String(message).trim()) && !fileText && !req.file) {
-      return res.status(400).json({ error: 'Envie uma mensagem, arquivo ou imagem.' });
-    }
+    let extractedDocText = '';
+    let attachmentName = null;
 
-    const db = await getDb();
-
-    const parsedConvId = Number(conversationId);
-    if (!conversationId || Number.isNaN(parsedConvId) || parsedConvId <= 0) {
-      const autoTitle = String(message || attachmentName || 'Atendimento TI')
-        .trim()
-        .slice(0, 60) || 'Atendimento TI';
-      const created = await db.run(
-        'INSERT INTO conversations (title, mode) VALUES (?, ?)',
-        [autoTitle, mode]
-      );
-      conversationId = created.lastID;
-    } else {
-      conversationId = parsedConvId;
-      const existingConv = await db.get('SELECT id FROM conversations WHERE id = ?', [conversationId]);
-      if (!existingConv) {
-        const autoTitle = String(message || attachmentName || 'Atendimento TI')
-          .trim()
-          .slice(0, 60) || 'Atendimento TI';
-        const created = await db.run(
-          'INSERT INTO conversations (title, mode) VALUES (?, ?)',
-          [autoTitle, mode]
-        );
-        conversationId = created.lastID;
+    if (req.file) {
+      attachmentName = req.file.originalname;
+      if (!req.file.mimetype.startsWith('image/')) {
+        extractedDocText = await extractTextFromBuffer(req.file);
       }
     }
 
+    if (!message.trim() && !extractedDocText && !req.file) {
+      return res.status(400).json({ error: 'Envie uma mensagem ou arquivo.' });
+    }
+
+    const db = await getDb();
+    const parsedId = Number(conversationId);
+
+    if (!conversationId || Number.isNaN(parsedId) || parsedId <= 0) {
+      const title = String(message || attachmentName || 'Nova conversa').trim().slice(0, 60);
+      const created = await db.run('INSERT INTO conversations (title, mode) VALUES (?, ?)', [title, mode]);
+      conversationId = created.lastID;
+    }
+
     const combinedPrompt = [
-      String(message || '').trim(),
-      fileText
-        ? `\n\n--- Conteúdo do arquivo anexado (${attachmentName || 'arquivo'}) ---\n${String(fileText).slice(0, 15000)}`
+      message.trim(),
+      extractedDocText
+        ? `\n\n--- Conteúdo do Documento Anexado (${attachmentName}) ---\n${extractedDocText.slice(0, 20000)}`
         : '',
     ]
       .filter(Boolean)
       .join('');
 
-    const fileLabel = req.file ? req.file.originalname : attachmentName;
-
     await db.run(
       'INSERT INTO messages (conversation_id, role, content, attachment_name) VALUES (?, ?, ?, ?)',
-      [conversationId, 'user', combinedPrompt || '[Anexo enviado]', fileLabel || null]
+      [conversationId, 'user', combinedPrompt || '[Anexo enviado]', attachmentName]
     );
 
     const historyRows = await db.all(
-      'SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY id DESC LIMIT 12',
+      'SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY id DESC LIMIT 10',
       [conversationId]
     );
     const history = historyRows.reverse().slice(0, -1);
 
     let imagePart = null;
-    if (req.file && typeof req.file.mimetype === 'string' && req.file.mimetype.startsWith('image/')) {
+    if (req.file && req.file.mimetype.startsWith('image/')) {
       imagePart = {
         base64: req.file.buffer.toString('base64'),
         mimeType: req.file.mimetype,
       };
     }
 
-    console.log('[VAFRIX AI] Processando mensagem na conversa:', conversationId, '| modo:', mode);
+    // Headers para Streaming HTTP (SSE / Chunked Response)
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Transfer-Encoding', 'chunked');
+    res.setHeader('X-Conversation-Id', String(conversationId));
 
-    const aiReply = await generateVafrixResponse({
+    const finalResponseText = await generateVafrixStreamResponse({
       history,
-      prompt: combinedPrompt || 'Analise a imagem enviada e aponte possíveis problemas ou configurações.',
+      prompt: combinedPrompt,
       mode,
       imagePart,
+      enableSearch: searchActive,
+      onChunk: (chunk) => {
+        res.write(chunk);
+      },
     });
 
-    const safeReply =
-      typeof aiReply === 'string' && aiReply.trim()
-        ? aiReply.trim()
-        : 'Não foi possível gerar uma resposta para essa pergunta no momento.';
+    await db.run('INSERT INTO messages (conversation_id, role, content) VALUES (?, ?, ?)', [
+      conversationId,
+      'assistant',
+      finalResponseText,
+    ]);
 
-    await db.run(
-      'INSERT INTO messages (conversation_id, role, content) VALUES (?, ?, ?)',
-      [conversationId, 'assistant', safeReply]
-    );
+    await db.run('UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?', [
+      conversationId,
+    ]);
 
-    await db.run(
-      'UPDATE conversations SET updated_at = CURRENT_TIMESTAMP, mode = ? WHERE id = ?',
-      [mode, conversationId]
-    );
-
-    return res.json({
-      conversationId: Number(conversationId),
-      reply: safeReply,
-      message: safeReply,
-    });
+    res.end();
   } catch (err) {
-    console.error('Erro ao processar mensagem na VAFRIX AI:', err);
-    const statusCode = err?.status === 429 || err?.error?.code === 429 ? 429 : 500;
-    const friendlyMessage =
-      statusCode === 429
-        ? 'Limite de requisições atingido no momento. Aguarde alguns instantes ou tente novamente.'
-        : err?.message || 'Erro ao comunicar com a inteligência artificial.';
-
-    return res.status(statusCode).json({
-      error: friendlyMessage,
-      conversationId: conversationId ? Number(conversationId) : null,
-    });
-  }
-}
-
-async function createReport(req, res) {
-  try {
-    const {
-      conversationId = null,
-      title,
-      equipment = '',
-      problemDescription,
-      diagnosis = '',
-      procedures = '',
-      result = '',
-      recommendations = '',
-    } = req.body || {};
-
-    if (!title || !problemDescription) {
-      return res.status(400).json({ error: 'Título e descrição do problema são obrigatórios.' });
+    console.error('Erro no processamento:', err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Erro ao processar mensagem na IA.' });
+    } else {
+      res.write('\n\n[Erro no meio da transmissão da resposta]');
+      res.end();
     }
-
-    const db = await getDb();
-    const inserted = await db.run(
-      `INSERT INTO reports
-        (conversation_id, title, equipment, problem_description, diagnosis, procedures, result, recommendations)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        conversationId,
-        String(title).trim(),
-        String(equipment).trim(),
-        String(problemDescription).trim(),
-        String(diagnosis).trim(),
-        String(procedures).trim(),
-        String(result).trim(),
-        String(recommendations).trim(),
-      ]
-    );
-
-    const report = await db.get('SELECT * FROM reports WHERE id = ?', [inserted.lastID]);
-    res.status(201).json({ report });
-  } catch (err) {
-    console.error('Erro ao salvar relatório:', err);
-    res.status(500).json({ error: 'Erro interno ao salvar relatório técnico.' });
-  }
-}
-
-async function listReports(req, res) {
-  try {
-    const db = await getDb();
-    const reports = await db.all('SELECT * FROM reports ORDER BY id DESC');
-    res.json({ reports });
-  } catch (err) {
-    console.error('Erro ao listar relatórios:', err);
-    res.status(500).json({ error: 'Erro interno ao carregar relatórios.' });
   }
 }
 
 module.exports = {
   listConversations,
-  createConversation,
+  deleteConversation,
+  clearAllConversations,
   getMessages,
   sendMessage,
-  createReport,
-  listReports,
 };

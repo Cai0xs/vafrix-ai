@@ -1,25 +1,15 @@
 // backend/src/services/aiService.js
 const { GoogleGenAI } = require('@google/genai');
+const axios = require('axios');
 
 const SYSTEM_INSTRUCTION = `
-Você é a VAFRIX AI, uma inteligência artificial especialista em Tecnologia da Informação (TI), atuando como engenheiro/técnico sênior de infraestrutura e suporte técnico, além de professor didático.
+Você é a VAFRIX AI, uma inteligência artificial assistente geral de altíssimo nível, versátil, precisa e didática.
 
-Especialidades principais:
-- Redes de computadores (IPv4/IPv6, sub-redes, gateway, DNS, DHCP, VLAN, roteamento/switching, protocolos, cabeamento estruturado, roteadores/switches, Wi-Fi, diagnóstico de conectividade, Cisco Packet Tracer).
-- Infraestrutura de TI (racks, patch panels, cabeamento, redes empresariais, servidores, virtualização, Windows Server, Linux, compartilhamento de arquivos, usuários e permissões).
-- CFTV e monitoramento (câmeras IP e analógicas, DVR/NVR, PoE, configuração de câmeras, endereçamento IP, armazenamento, diagnóstico de falhas, acesso remoto).
-- Manutenção de computadores (hardware, CPU, placa-mãe, RAM, SSD/HD, fonte, GPU, SO, drivers, formatação, preventiva/corretiva, lentidão e falhas).
-- Suporte técnico (triagem, atendimento, resolução de erros, checklists, relatórios técnicos, orientação clara).
-- Segurança da informação (segurança de redes, firewall, controle de acesso, proteção de dispositivos, boas práticas, vulnerabilidades, diagnóstico defensivo, backup e recuperação).
-
-Regras de comportamento:
-1. Entenda o cenário antes de dar a solução final; faça perguntas objetivas quando faltarem dados importantes (ex.: modelo, IPs, sintomas, logs).
-2. Explique passo a passo, mostrando comandos/exemplos práticos e explicando a finalidade de cada comando.
-3. Liste possíveis causas e alternativas de solução quando fizer sentido.
-4. Adapte o nível técnico ao usuário com clareza, sem enrolação.
-5. Nunca invente informações técnicas; admita quando não souber ou quando precisar de mais contexto.
-6. Sempre alerte sobre riscos antes de comandos ou passos que possam causar perda de dados, queda de serviço ou dano a equipamentos. Nunca peça senhas, credenciais administrativas ou chaves privadas.
-7. Quando estiver em MODO DIAGNÓSTICO, siga uma investigação estruturada: identifique o problema, faça perguntas-chave, indique testes seguros, analise resultados, aponte causas prováveis, recomende correções e explique como confirmar a resolução.
+Diretrizes de resposta:
+1. Responda sobre qualquer assunto com clareza, tom amigável e estrutura profissional.
+2. Quando solicitado código ou soluções técnicas, forneça explicações passo a passo detalhadas.
+3. Se forem fornecidos resultados de pesquisa na web ou texto de arquivos anexados, utilize-os para formular uma resposta atualizada e precisa.
+4. Quando o usuário pedir um diagrama, fluxo ou topologia de rede, gere o código usando a sintaxe Mermaid dentro de um bloco de código de linguagem \`mermaid\`.
 `;
 
 const FALLBACK_MODELS = [
@@ -32,86 +22,43 @@ const FALLBACK_MODELS = [
 function getAiClient() {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey === 'SUA_CHAVE_DO_GEMINI_AQUI') {
-    throw new Error('GEMINI_API_KEY não configurada no arquivo .env do backend.');
+    throw new Error('GEMINI_API_KEY não configurada no arquivo .env.');
   }
   return new GoogleGenAI({ apiKey });
 }
 
-function getErrorCode(err) {
-  return err?.status || err?.error?.code || err?.code;
-}
-
-function isTransientError(err) {
-  const code = getErrorCode(err);
-  return code === 503 || code === 429 || code === 500 || code === 504;
-}
-
-function buildModelQueue() {
-  const primary = (process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite')
-    .replace(/^models\//, '')
-    .trim();
-
-  const queue = [primary];
-  for (const candidate of FALLBACK_MODELS) {
-    const clean = candidate.replace(/^models\//, '').trim();
-    if (clean && !queue.includes(clean)) {
-      queue.push(clean);
+async function searchWeb(query) {
+  try {
+    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    const response = await axios.get(url, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
+      },
+      timeout: 4000,
+    });
+    const html = response.data;
+    const regex = /<a class="result__snippet[^>]*>(.*?)<\/a>/g;
+    let match;
+    const results = [];
+    while ((match = regex.exec(html)) !== null && results.length < 4) {
+      const text = match[1].replace(/<[^>]+>/g, '').trim();
+      if (text) results.push(text);
     }
-  }
-  return queue;
-}
-
-async function callModelWithRetry(ai, baseParams, modelName, maxRetries = 2) {
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await ai.models.generateContent({
-        ...baseParams,
-        model: modelName,
-      });
-    } catch (err) {
-      const code = getErrorCode(err);
-      const transient = isTransientError(err);
-
-      if (!transient || attempt === maxRetries) {
-        throw err;
-      }
-
-      // Em 429 (cota), espera um pouco mais antes de tentar novamente/trocar modelo
-      const baseWait = code === 429 ? 2000 : 1000;
-      const waitMs = baseWait * (attempt + 1);
-      await new Promise((resolve) => setTimeout(resolve, waitMs));
-    }
+    return results.join('\n- ');
+  } catch (err) {
+    console.warn('[VAFRIX Search] Erro ao buscar na web:', err.message);
+    return null;
   }
 }
 
-function extractResponseText(response) {
-  const fromGetter = typeof response?.text === 'string' ? response.text : '';
-  if (fromGetter.trim()) {
-    return fromGetter.trim();
-  }
-
-  const parts = response?.candidates?.[0]?.content?.parts;
-  if (Array.isArray(parts)) {
-    const joined = parts
-      .map((part) => (typeof part?.text === 'string' ? part.text : ''))
-      .join('')
-      .trim();
-    if (joined) {
-      return joined;
-    }
-  }
-
-  return '';
-}
-
-function buildContents(history = [], prompt = '', imagePart = null) {
+function buildContents(history = [], prompt = '', webContext = '', imagePart = null) {
   const contents = [];
 
   if (Array.isArray(history)) {
     for (const item of history) {
       const text = typeof item?.content === 'string' ? item.content.trim() : '';
       if (!text) continue;
-
       contents.push({
         role: item.role === 'assistant' ? 'model' : 'user',
         parts: [{ text }],
@@ -119,11 +66,14 @@ function buildContents(history = [], prompt = '', imagePart = null) {
     }
   }
 
-  const cleanPrompt = typeof prompt === 'string' ? prompt.trim() : '';
-  const userParts = [];
+  let finalPrompt = prompt || '';
+  if (webContext) {
+    finalPrompt += `\n\n--- INFORMAÇÕES RECENTES OBTIDAS NA WEB ---\n- ${webContext}\n--- FIM DOS DADOS DA WEB ---`;
+  }
 
-  if (cleanPrompt) {
-    userParts.push({ text: cleanPrompt });
+  const userParts = [];
+  if (finalPrompt.trim()) {
+    userParts.push({ text: finalPrompt.trim() });
   }
 
   if (imagePart && imagePart.base64 && imagePart.mimeType) {
@@ -136,7 +86,7 @@ function buildContents(history = [], prompt = '', imagePart = null) {
   }
 
   if (userParts.length === 0) {
-    userParts.push({ text: 'Olá, preciso de suporte técnico.' });
+    userParts.push({ text: 'Olá!' });
   }
 
   contents.push({
@@ -147,80 +97,53 @@ function buildContents(history = [], prompt = '', imagePart = null) {
   return contents;
 }
 
-async function generateVafrixResponse({ history = [], prompt, mode = 'chat', imagePart = null }) {
+async function generateVafrixStreamResponse({
+  history = [],
+  prompt,
+  mode = 'chat',
+  imagePart = null,
+  enableSearch = false,
+  onChunk,
+}) {
   const ai = getAiClient();
+
+  let webContext = '';
+  if (enableSearch && prompt) {
+    console.log('[VAFRIX AI] Realizando pesquisa na web para:', prompt);
+    webContext = await searchWeb(prompt);
+  }
 
   const modePrefix =
     mode === 'diagnostic'
-      ? '[MODO DIAGNÓSTICO ATIVO: Conduza uma investigação técnica estruturada com perguntas, testes seguros, causas prováveis, correções e validação.]\n\n'
+      ? '[MODO DIAGNÓSTICO: Conduza uma investigação estruturada com hipóteses, testes e soluções.]\n\n'
       : mode === 'checklist'
-      ? '[MODO CHECKLIST ATIVO: Gere um checklist prático e organizado por etapas.]\n\n'
+      ? '[MODO CHECKLIST: Gere um passo a passo prático de verificação.]\n\n'
       : '';
 
-  const formattedPrompt = `${modePrefix}${typeof prompt === 'string' ? prompt : ''}`;
-  const contents = buildContents(history, formattedPrompt, imagePart);
-  const modelQueue = buildModelQueue();
+  const contents = buildContents(history, `${modePrefix}${prompt}`, webContext, imagePart);
+  const primaryModel = (process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite').replace(/^models\//, '').trim();
 
-  let lastError = null;
+  const responseStream = await ai.models.generateContentStream({
+    contents,
+    model: primaryModel,
+    config: {
+      systemInstruction: SYSTEM_INSTRUCTION,
+      temperature: 0.5,
+    },
+  });
 
-  for (let i = 0; i < modelQueue.length; i++) {
-    const modelName = modelQueue[i];
-    const hasNextFallback = i < modelQueue.length - 1;
-
-    try {
-      console.log('[VAFRIX AI] Usando modelo:', modelName);
-
-      const response = await callModelWithRetry(
-        ai,
-        {
-          contents,
-          config: {
-            systemInstruction: SYSTEM_INSTRUCTION,
-            temperature: 0.4,
-          },
-        },
-        modelName,
-        2
-      );
-
-      const text = extractResponseText(response);
-
-      if (text) {
-        return text;
+  let fullText = '';
+  for await (const chunk of responseStream) {
+    const chunkText = chunk.text || '';
+    if (chunkText) {
+      fullText += chunkText;
+      if (typeof onChunk === 'function') {
+        onChunk(chunkText);
       }
-
-      console.warn('[VAFRIX AI] Resposta vazia do modelo:', modelName, {
-        finishReason: response?.candidates?.[0]?.finishReason,
-        blockReason: response?.promptFeedback?.blockReason,
-      });
-
-      if (!hasNextFallback) {
-        return 'A IA retornou uma resposta vazia para essa solicitação. Tente reformular a pergunta ou enviar novamente.';
-      }
-    } catch (err) {
-      lastError = err;
-      const code = getErrorCode(err);
-
-      console.error(
-        `[VAFRIX AI] Falha no modelo ${modelName} (status: ${code || 'desconhecido'}):`,
-        err?.message || err
-      );
-
-      // Se o erro for de chave/requisição inválida (400/401/403), não adianta trocar de modelo
-      if (code === 400 || code === 401 || code === 403) {
-        throw err;
-      }
-
-      // Se não há mais modelos na fila, propaga o último erro
-      if (!hasNextFallback) {
-        throw lastError;
-      }
-
-      console.log('[VAFRIX AI] Tentando modelo de fallback:', modelQueue[i + 1]);
     }
   }
 
-  throw lastError || new Error('Não foi possível obter resposta de nenhum modelo configurado.');
+  return fullText || 'Não foi possível obter resposta.';
 }
 
-module.exports = { generateVafrixResponse };
+module.exports = { generateVafrixStreamResponse };

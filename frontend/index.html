@@ -3,209 +3,248 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>VAFRIX AI — Inteligência Artificial Especializada em TI</title>
+  <title>VAFRIX AI — Assistente Completo</title>
   <link rel="stylesheet" href="css/style.css" />
+  <!-- Suporte a Diagramas de Rede e Fluxogramas Visuais -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
 </head>
 <body>
-  <div class="app-shell">
-    <!-- Overlay mobile para menu lateral -->
+  <div class="app-layout">
+    <!-- Overlay Mobile -->
     <div id="sidebarOverlay" class="sidebar-overlay"></div>
 
-    <!-- Menu Lateral -->
+    <!-- Sidebar Lateral -->
     <aside id="sidebar" class="sidebar">
       <div class="sidebar-header">
         <div class="brand">
-          <!-- Substitua o src pela sua logo oficial preservando o símbolo original -->
-          <img
-            src="assets/logo.png"
-            alt="Logo VAFRIX AI"
-            class="brand-logo"
-            onerror="this.style.display='none'; document.getElementById('logoFallback').style.display='flex';"
-          />
-          <div id="logoFallback" class="brand-fallback" style="display: none;">VX</div>
-          <div class="brand-text">
-            <span class="brand-name">VAFRIX AI</span>
-            <span class="brand-sub">TI • Redes • Infra • CFTV</span>
+          <div class="logo">VX</div>
+          <div class="brand-info">
+            <h1>VAFRIX AI</h1>
+            <span class="subtitle">Assistente Virtual Multiuso</span>
           </div>
         </div>
-        <button id="closeSidebarBtn" class="icon-btn mobile-only" title="Fechar menu">✕</button>
+        <button id="closeSidebarBtn" class="icon-btn mobile-only" type="button" title="Fechar menu">✕</button>
       </div>
 
-      <button id="newChatBtn" class="btn-primary">
-        <span>+ Nova conversa</span>
+      <button id="newChatBtn" class="btn btn-primary new-chat-btn" type="button">
+        <span>+</span> Nova conversa
       </button>
 
-      <!-- Modos / Ferramentas -->
-      <div class="nav-section">
-        <div class="nav-label">Ferramentas e Modos</div>
-        <button class="nav-item active" data-view="chat" data-mode="chat">
-          <span>💬 Chat Técnico</span>
-        </button>
-        <button class="nav-item" data-view="chat" data-mode="diagnostic">
-          <span>🩺 Modo Diagnóstico</span>
-        </button>
-        <button class="nav-item" data-view="checklist">
-          <span>☑️ Checklists TI</span>
-        </button>
-        <button class="nav-item" data-view="reports">
-          <span>📄 Relatórios Técnicos</span>
-        </button>
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">FERRAMENTAS E MODOS</div>
+        <nav class="nav-menu">
+          <button class="nav-item active" data-view="chat" data-mode="chat" type="button">
+            <span class="nav-icon">💬</span> Conversação Geral
+          </button>
+
+          <button class="nav-item" data-view="chat" data-mode="diagnostic" type="button">
+            <span class="nav-icon">🩺</span> Modo Diagnóstico
+          </button>
+
+          <button class="nav-item" data-view="checklist" data-mode="checklist" type="button">
+            <span class="nav-icon">☑</span> Checklists TI
+          </button>
+
+          <button class="nav-item" data-view="reports" data-mode="reports" type="button">
+            <span class="nav-icon">📄</span> Relatórios Técnicos
+          </button>
+        </nav>
       </div>
 
-      <!-- Histórico de conversas -->
-      <div class="history-section">
-        <div class="nav-label">Histórico de conversas</div>
-        <div id="historyList" class="history-list"></div>
+      <div class="sidebar-section history-section">
+        <div class="sidebar-section-header">
+          <span class="sidebar-section-title">HISTÓRICO DE CONVERSAS</span>
+          <button id="clearHistoryBtn" class="text-btn" type="button">Limpar Tudo</button>
+        </div>
+        <div id="historyList" class="history-list">
+          <div class="history-empty">Nenhuma conversa salva</div>
+        </div>
       </div>
     </aside>
 
     <!-- Área Principal -->
-    <main class="main-area">
+    <main class="main-content">
+      <!-- Topbar Header -->
       <header class="topbar">
         <div class="topbar-left">
-          <button id="openSidebarBtn" class="icon-btn mobile-only" title="Abrir menu">☰</button>
-          <div>
-            <h1 id="viewTitle" class="topbar-title">VAFRIX AI</h1>
-            <span id="modeBadge" class="mode-badge">Modo: Chat Técnico</span>
-          </div>
+          <button id="openSidebarBtn" class="icon-btn mobile-only" type="button" title="Abrir menu">☰</button>
+          <h2 id="viewTitle" class="view-title">VAFRIX AI</h2>
+          <span id="modeBadge" class="mode-badge">Modo: Conversação Geral</span>
         </div>
+
         <div class="topbar-right">
-          <span id="statusIndicator" class="status-pill">● Online</span>
+          <span class="status-indicator online">
+            <span class="status-dot"></span> Online
+          </span>
         </div>
       </header>
 
-      <!-- VIEW 1: CHAT & DIAGNÓSTICO -->
+      <!-- View: Chat -->
       <section id="chatView" class="view active">
         <div id="messagesContainer" class="messages-container">
           <div class="welcome-card">
-            <h2>Bem-vindo à VAFRIX AI</h2>
-            <p>
-              Assistente técnica especializada em <strong>Redes de Computadores</strong>,
-              <strong>Infraestrutura de TI</strong>, <strong>CFTV</strong>,
-              <strong>Manutenção de Hardware</strong>, <strong>Suporte Técnico</strong> e
-              <strong>Segurança da Informação</strong>.
-            </p>
-            <div class="quick-prompts">
-              <button class="quick-btn" data-prompt="Minha câmera IP não está aparecendo no NVR. Vamos diagnosticar passo a passo?">
-                Diagnosticar câmera IP sem imagem no NVR
-              </button>
-              <button class="quick-btn" data-prompt="Explique VLAN, trunk e access com exemplos práticos e cuidados ao configurar em switch.">
-                VLAN, Trunk e Access na prática
-              </button>
-              <button class="quick-btn" data-prompt="Quais testes seguros fazer em um PC com lentidão severa e alto uso de disco?">
-                Diagnóstico de lentidão em PC
-              </button>
-            </div>
+            <div class="welcome-badge">VAFRIX AI • SISTEMA COMPLETO</div>
+            <h2>Como posso ajudar hoje?</h2>
+            <p>Pergunte qualquer coisa, envie arquivos (PDF, DOCX, CSV, Imagens), busque na web ou solicite imagens e diagramas visuais.</p>
           </div>
         </div>
 
         <div id="typingIndicator" class="typing-indicator hidden">
-          <span>VAFRIX AI está analisando e gerando resposta...</span>
+          <span class="dot"></span>
+          <span class="dot"></span>
+          <span class="dot"></span>
+          <span class="typing-text">VAFRIX AI está respondendo...</span>
         </div>
 
-        <!-- Prévia de anexos -->
-        <div id="attachmentPreview" class="attachment-preview hidden"></div>
+        <!-- Composer de Mensagens -->
+        <div class="chat-composer-wrap">
+          <div id="attachmentPreview" class="attachment-preview hidden"></div>
 
-        <!-- Composer -->
-        <form id="chatForm" class="composer">
-          <input type="file" id="imageInput" accept="image/*" hidden />
-          <input type="file" id="fileInput" accept=".txt,.log,.cfg,.conf,.json,.csv,.md,.xml,.yaml,.yml" hidden />
+          <!-- Barra de Atalhos Rápidos -->
+          <div id="promptChips" class="prompt-chips" aria-label="Atalhos de prompts">
+            <button
+              type="button"
+              class="prompt-chip"
+              data-template="Revise este código, aponte possíveis bugs, falhas de segurança ou melhorias de performance e mostre a versão corrigida:\n\n"
+            >
+              💻 Revisar código
+            </button>
+            <button
+              type="button"
+              class="prompt-chip"
+              data-template="Resuma de forma clara, objetiva e em tópicos principais o conteúdo a seguir:\n\n"
+            >
+              📝 Resumir documento
+            </button>
+            <button
+              type="button"
+              class="prompt-chip"
+              data-template="Monte um plano de estudo estruturado por etapas, com objetivos semanais e exercícios práticos sobre: "
+            >
+              📚 Montar plano de estudo
+            </button>
+            <button
+              type="button"
+              class="prompt-chip"
+              data-template="Estruture um diagnóstico técnico completo com: 1) Possíveis causas, 2) Testes rápidos para validar, 3) Plano de correção. Cenário: "
+            >
+              🩺 Estruturar diagnóstico
+            </button>
+            <button
+              type="button"
+              class="prompt-chip chip-image"
+              data-action="image"
+            >
+              🎨 Gerar imagem
+            </button>
+          </div>
 
-          <button type="button" id="attachImageBtn" class="icon-btn" title="Enviar imagem (equipamento, tela, erro)">
-            🖼️
-          </button>
-          <button type="button" id="attachFileBtn" class="icon-btn" title="Anexar arquivo de texto ou log">
-            📎
-          </button>
+          <form id="chatForm" class="chat-form">
+            <div class="composer-toolbar">
+              <button id="attachImageBtn" type="button" class="tool-btn" title="Enviar Foto/Imagem">🖼️</button>
+              <button id="attachFileBtn" type="button" class="tool-btn" title="Anexar PDF/Doc/Texto">📎</button>
 
-          <textarea
-            id="messageInput"
-            rows="1"
-            placeholder="Descreva o problema, cole comandos/logs ou peça ajuda técnica..."
-          ></textarea>
+              <label class="web-search-toggle" title="Buscar informações recentes na internet">
+                <input type="checkbox" id="webSearchToggle" />
+                <span>🌐 Pesquisa Web</span>
+              </label>
 
-          <button type="submit" id="sendBtn" class="btn-send" title="Enviar mensagem">
-            Enviar
-          </button>
-        </form>
+              <input type="file" id="imageInput" accept="image/*" class="hidden" />
+              <input type="file" id="fileInput" accept=".pdf,.docx,.txt,.csv,.log,.json,.js,.html,.css,.md,.py,.sql" class="hidden" />
+            </div>
+
+            <textarea
+              id="messageInput"
+              class="message-input"
+              rows="1"
+              placeholder="Escreva sua pergunta, use /imagem para criar uma imagem ou clique em um atalho..."
+            ></textarea>
+
+            <button id="sendBtn" type="submit" class="btn btn-primary send-btn">Enviar</button>
+          </form>
+        </div>
       </section>
 
-      <!-- VIEW 2: CHECKLISTS -->
+      <!-- View: Checklists -->
       <section id="checklistView" class="view">
-        <div class="panel-container">
-          <div class="panel-header">
-            <h2>Checklists Operacionais de TI</h2>
-            <div class="checklist-tabs">
-              <button class="tab-btn active" data-checklist="rack">Rack e Cabeamento</button>
-              <button class="tab-btn" data-checklist="cftv">Instalação CFTV</button>
-              <button class="tab-btn" data-checklist="maintenance">Manutenção Preventiva</button>
-            </div>
+        <div class="view-container">
+          <div class="view-header">
+            <h3>Checklists Operacionais</h3>
+            <p>Roteiros e procedimentos práticos para execução rápida.</p>
           </div>
+
+          <div class="tabs">
+            <button class="tab-btn active" data-checklist="rack" type="button">Organização de Rack</button>
+            <button class="tab-btn" data-checklist="cftv" type="button">Instalação CFTV</button>
+            <button class="tab-btn" data-checklist="maintenance" type="button">Manutenção de PC</button>
+          </div>
+
           <div id="checklistItems" class="checklist-items"></div>
         </div>
       </section>
 
-      <!-- VIEW 3: RELATÓRIOS TÉCNICOS -->
+      <!-- View: Relatórios -->
       <section id="reportsView" class="view">
-        <div class="panel-container">
-          <div class="panel-header">
-            <h2>Gerador de Relatórios Técnicos</h2>
+        <div class="view-container">
+          <div class="view-header">
+            <h3>Gerador de Relatórios Técnicos</h3>
+            <p>Estruture diagnósticos, chamados ou documentações técnicas.</p>
           </div>
 
-          <form id="reportForm" class="report-form">
-            <div class="form-row">
+          <div class="reports-grid">
+            <form id="reportForm" class="report-form card">
               <div class="form-group">
-                <label for="repTitle">Título do Atendimento / Relatório *</label>
-                <input type="text" id="repTitle" required placeholder="Ex: Falha de comunicação em câmera IP - Setor Estoque" />
+                <label for="repTitle">Título do Relatório</label>
+                <input type="text" id="repTitle" placeholder="Ex: Substituição de Switch e Reorganização do Rack" required />
               </div>
+
               <div class="form-group">
-                <label for="repEquipment">Equipamento Envolvido</label>
-                <input type="text" id="repEquipment" placeholder="Ex: NVR Intelbras / Switch PoE / Servidor Windows" />
+                <label for="repEquipment">Equipamento / Sistema Envolvido</label>
+                <input type="text" id="repEquipment" placeholder="Ex: Switch Cisco 2960 / Servidor de Arquivos" />
               </div>
-            </div>
 
-            <div class="form-group">
-              <label for="repProblem">Descrição do Problema *</label>
-              <textarea id="repProblem" rows="2" required placeholder="Descreva o sintoma relatado e o cenário inicial..."></textarea>
-            </div>
+              <div class="form-group">
+                <label for="repProblem">Descrição do Problema</label>
+                <textarea id="repProblem" rows="3" placeholder="Sintomas relatados e falhas identificadas..." required></textarea>
+              </div>
 
-            <div class="form-group">
-              <label for="repDiagnosis">Diagnóstico</label>
-              <textarea id="repDiagnosis" rows="2" placeholder="Causa raiz ou hipóteses confirmadas..."></textarea>
-            </div>
+              <div class="form-group">
+                <label for="repDiagnosis">Diagnóstico / Causa Raiz</label>
+                <textarea id="repDiagnosis" rows="2" placeholder="O que causou o problema..."></textarea>
+              </div>
 
-            <div class="form-group">
-              <label for="repProcedures">Procedimentos Realizados</label>
-              <textarea id="repProcedures" rows="2" placeholder="Testes, comandos, configurações ou substituições feitas..."></textarea>
-            </div>
+              <div class="form-group">
+                <label for="repProcedures">Procedimentos Executados</label>
+                <textarea id="repProcedures" rows="3" placeholder="Passo a passo das correções efetuadas..."></textarea>
+              </div>
 
-            <div class="form-row">
               <div class="form-group">
                 <label for="repResult">Resultado</label>
-                <input type="text" id="repResult" placeholder="Ex: Resolvido / Aguardando peça / Operacional" />
+                <input type="text" id="repResult" placeholder="Ex: Serviço restabelecido com sucesso" />
               </div>
+
               <div class="form-group">
                 <label for="repRecommendations">Recomendações</label>
-                <input type="text" id="repRecommendations" placeholder="Ex: Reservar IP estático, revisar nobreak..." />
+                <textarea id="repRecommendations" rows="2" placeholder="Ações futuras ou de prevenção..."></textarea>
+              </div>
+
+              <button type="submit" class="btn btn-primary">Salvar e Gerar Relatório</button>
+            </form>
+
+            <div class="reports-sidebar">
+              <div id="reportOutputBox" class="card report-output-card hidden">
+                <div class="card-header">
+                  <h4>Relatório Formatado</h4>
+                  <button id="copyReportBtn" class="copy-btn" type="button">Copiar</button>
+                </div>
+                <pre id="reportFormattedText" class="report-preview-text"></pre>
+              </div>
+
+              <div class="card">
+                <h4>Relatórios Salvos</h4>
+                <div id="savedReportsList" class="saved-reports-list"></div>
               </div>
             </div>
-
-            <div class="form-actions">
-              <button type="submit" class="btn-primary">Salvar e Formatar Relatório</button>
-            </div>
-          </form>
-
-          <div id="reportOutputBox" class="report-output hidden">
-            <div class="report-output-header">
-              <h3>Relatório Formatado</h3>
-              <button id="copyReportBtn" type="button" class="btn-secondary">Copiar Relatório</button>
-            </div>
-            <pre id="reportFormattedText"></pre>
-          </div>
-
-          <div class="saved-reports">
-            <h3>Relatórios Salvos</h3>
-            <div id="savedReportsList" class="saved-reports-list"></div>
           </div>
         </div>
       </section>
